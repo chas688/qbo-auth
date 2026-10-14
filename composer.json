@@ -1,0 +1,27 @@
+{
+    "name": "charlesharmon/qbo-auth",
+    "description": "QuickBooks Online OAuth 2.0 connection flow for Laravel",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "illuminate/support": "^12.0 || ^13.0",
+        "illuminate/routing": "^12.0 || ^13.0",
+        "illuminate/http": "^12.0 || ^13.0",
+        "illuminate/database": "^12.0 || ^13.0",
+        "nesbot/carbon": "^3.0",
+        "quickbooks/v3-php-sdk": "^6.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "CharlesHarmon\\QboAuth\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "CharlesHarmon\\QboAuth\\QboAuthServiceProvider"
+            ]
+        }
+    }
+}
