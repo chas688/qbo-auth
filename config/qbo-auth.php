@@ -7,5 +7,7 @@ return [
     'redirect_uri' => env('QBO_REDIRECT_URI', 'http://localhost:8000/oauth/quickbooks/callback'),
     'scope' => 'com.intuit.quickbooks.accounting',
     'logging' => env('QBO_LOGGING', false),
+    'register_routes' => true,
+    'route_prefix' => 'oauth/quickbooks',
     'route_middleware' => ['web'],
 ];

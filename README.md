@@ -4,21 +4,23 @@ This package wraps the official `quickbooks/v3-php-sdk` for the QuickBooks Onlin
 
 ## Install in a Laravel application
 
-For local development, add a Composer path repository that points to this package and require `charlesharmon/qbo-auth:dev-main`:
+Requires PHP 8.3+ and Laravel 12 or 13. Add the GitHub repository and require a tagged release:
+
+```sh
+composer config repositories.qbo-auth vcs git@github.com:chas688/qboAuth.git
+composer require charlesharmon/qbo-auth:^0.1 --with-all-dependencies
+```
+
+`--with-all-dependencies` is needed in a new Laravel 13 application. The skeleton locks Guzzle 8, but Intuit's `quickbooks/v3-php-sdk` requires Guzzle 7, so Composer must be allowed to downgrade Guzzle. Laravel supports either version.
+
+If the package is published on Packagist, skip the `composer config` step. Composer discovers the service provider automatically. Run `php artisan migrate` to create `quick_books_connections`. The package loads its own migration, so you do not need to publish it.
+
+To work on the package from inside a host application, use a path repository instead so that changes apply immediately:
 
 ```json
 "repositories": [{"type": "path", "url": "libraries/qboAuth", "options": {"symlink": true}}],
 "require": {"charlesharmon/qbo-auth": "dev-main"}
 ```
-
-After moving this directory into its own Git repository, replace the path repository with its Git URL, for example:
-
-```sh
-composer config repositories.qbo-auth vcs https://github.com/YOUR-ACCOUNT/YOUR-REPO.git
-composer require charlesharmon/qbo-auth:dev-main
-```
-
-Use a tagged version constraint after the first release. Composer discovers the service provider automatically. Run `php artisan migrate` to create `quick_books_connections`. The package includes its migration, so do not copy it into the host app.
 
 Set these values in the host application's environment:
 
@@ -42,10 +44,29 @@ When using a tunnel such as ngrok, set `QBO_REDIRECT_URI` to its HTTPS callback 
 
 Set `QBO_LOGGING=true` to write OAuth flow events to Laravel's configured log, usually `storage/logs/laravel.log`. These events include host and session-presence diagnostics, but never authorization codes, client secrets, state values, or tokens. The SDK's raw request logger is intentionally left off because it logs sensitive OAuth request data.
 
+## Configure and customize
+
 The routes use Laravel's `web` middleware by default. For an application with users, publish the config and add your authorization middleware to `route_middleware` before exposing the connect route:
 
 ```sh
 php artisan vendor:publish --tag=qbo-auth-config
+```
+
+The published config also controls the routes:
+
+- `route_prefix` (default `oauth/quickbooks`): the URL prefix for every package route. If you change it, update `QBO_REDIRECT_URI` and the redirect URI registered with Intuit to match.
+- `register_routes` (default `true`): set it to `false` to define your own routes that point to `CharlesHarmon\QboAuth\Http\Controllers\QuickBooksOAuthController`. Keep the `qbo-auth.*` route names, because the controller and views use them.
+
+To change the connect page or popup callback page, publish the views to `resources/views/vendor/qbo-auth`. Laravel uses the published copies instead of the package's views:
+
+```sh
+php artisan vendor:publish --tag=qbo-auth-views
+```
+
+To change the table, publish the migration and edit the copy before running it. The copy keeps the package's file name, so Laravel treats it as the same migration and does not run it twice:
+
+```sh
+php artisan vendor:publish --tag=qbo-auth-migrations
 ```
 
 Use `CharlesHarmon\QboAuth\QuickBooksConnections` to look up and refresh a connection:
@@ -57,3 +78,12 @@ $connection = $connections->refresh($connection);
 ```
 
 `refresh()` persists the newly returned access and refresh tokens together. Call it before the access token expires and retain the refreshed token for future requests. The package currently handles authorization and token persistence only; it does not make accounting API requests or run a refresh schedule.
+
+## Development
+
+The package has its own test suite, which uses Orchestra Testbench:
+
+```sh
+composer install
+composer test
+```

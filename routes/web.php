@@ -4,7 +4,7 @@ use CharlesHarmon\QboAuth\Http\Controllers\QuickBooksOAuthController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(config('qbo-auth.route_middleware', ['web']))
-    ->prefix('oauth/quickbooks')
+    ->prefix(config('qbo-auth.route_prefix', 'oauth/quickbooks'))
     ->name('qbo-auth.')
     ->group(function (): void {
         Route::get('/', [QuickBooksOAuthController::class, 'index'])->name('index');
