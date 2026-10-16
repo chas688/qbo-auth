@@ -11,5 +11,6 @@ Route::middleware(config('qbo-auth.route_middleware', ['web']))
         Route::get('connect', [QuickBooksOAuthController::class, 'connect'])->name('connect');
         Route::get('callback', [QuickBooksOAuthController::class, 'callback'])->name('callback');
         Route::get('connections/{connection}/company', [QuickBooksOAuthController::class, 'company'])->name('connections.company');
+        Route::post('connections/{connection}/refresh', [QuickBooksOAuthController::class, 'refresh'])->name('connections.refresh');
         Route::delete('connections/{connection}', [QuickBooksOAuthController::class, 'destroy'])->name('connections.destroy');
     });

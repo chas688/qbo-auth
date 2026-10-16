@@ -180,6 +180,10 @@
         .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: 0.375rem; background: transparent; color: var(--text-muted); cursor: pointer; }
         .icon-button:hover, .icon-button:focus-visible { background: var(--error-bg); color: var(--danger-icon); }
         .icon-button svg { width: 1.125rem; height: 1.125rem; }
+        .icon-button-neutral:hover, .icon-button-neutral:focus-visible { background: var(--surface-hover); color: var(--text); }
+        .icon-button:disabled { opacity: 0.5; cursor: wait; }
+        .action-buttons { display: inline-flex; align-items: center; gap: 0.25rem; }
+        .action-buttons form { display: contents; }
         .modal { width: min(26rem, calc(100% - 2rem)); padding: 0; border: 0; border-radius: 0.75rem; background: var(--surface); box-shadow: var(--shadow-modal); color: var(--text); }
         .modal::backdrop { background: var(--backdrop); }
         .modal[open] { animation: modal-in 0.18s ease-out; }
@@ -283,18 +287,33 @@
                                 </td>
                             @endforeach
                             <td class="actions">
-                                <button
-                                    type="button"
-                                    class="icon-button"
-                                    title="Remove connection"
-                                    aria-label="Remove connection for company {{ $connection->realm_id }}"
-                                    data-delete-url="{{ route('qbo-auth.connections.destroy', $connection, false) }}"
-                                    data-realm-id="{{ $connection->realm_id }}"
-                                >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                        <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/>
-                                    </svg>
-                                </button>
+                                <div class="action-buttons">
+                                    <form method="POST" action="{{ route('qbo-auth.connections.refresh', $connection, false) }}" data-refresh-form>
+                                        @csrf
+                                        <button
+                                            type="submit"
+                                            class="icon-button icon-button-neutral"
+                                            title="Refresh tokens"
+                                            aria-label="Refresh tokens for company {{ $connection->realm_id }}"
+                                        >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+                                            </svg>
+                                        </button>
+                                    </form>
+                                    <button
+                                        type="button"
+                                        class="icon-button"
+                                        title="Remove connection"
+                                        aria-label="Remove connection for company {{ $connection->realm_id }}"
+                                        data-delete-url="{{ route('qbo-auth.connections.destroy', $connection, false) }}"
+                                        data-realm-id="{{ $connection->realm_id }}"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/>
+                                        </svg>
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     @endforeach
@@ -402,6 +421,12 @@
             if (message.dataset.dismissAfter) {
                 setTimeout(() => dismiss(message), Number(message.dataset.dismissAfter));
             }
+        });
+
+        document.querySelectorAll('[data-refresh-form]').forEach((refreshForm) => {
+            refreshForm.addEventListener('submit', () => {
+                refreshForm.querySelector('[type="submit"]').disabled = true;
+            });
         });
 
         const deleteModal = document.getElementById('delete-modal');

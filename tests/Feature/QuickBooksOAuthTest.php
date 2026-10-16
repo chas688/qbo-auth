@@ -215,6 +215,64 @@ class QuickBooksOAuthTest extends TestCase
         $this->assertModelExists($connection);
     }
 
+    public function test_index_shows_refresh_button_for_each_connection(): void
+    {
+        config()->set('qbo-auth.redirect_uri', 'http://localhost/oauth/quickbooks/callback');
+
+        $connection = $this->connection('9130');
+
+        $this->get(route('qbo-auth.index'))
+            ->assertOk()
+            ->assertSee(route('qbo-auth.connections.refresh', $connection, false))
+            ->assertSee('Refresh tokens for company 9130');
+    }
+
+    public function test_refresh_saves_new_tokens_and_expiry_dates(): void
+    {
+        $client = Mockery::mock(OAuthClient::class);
+        $client->shouldReceive('refresh')->once()->with('secret-refresh')->andReturn($this->token('new-access', 'new-refresh'));
+        $this->app->instance(OAuthClient::class, $client);
+
+        $connection = $this->connection('9130');
+
+        $this->post(route('qbo-auth.connections.refresh', $connection))
+            ->assertRedirect(route('qbo-auth.index'))
+            ->assertHeader('Location', '/oauth/quickbooks')
+            ->assertSessionHas('qbo-auth.status', ['succeeded' => true, 'message' => 'QuickBooks company 9130 tokens refreshed.']);
+
+        $connection->refresh();
+        $this->assertSame('new-access', $connection->access_token);
+        $this->assertSame('new-refresh', $connection->refresh_token);
+        $this->assertNotNull($connection->access_token_expires_at);
+        $this->assertNotNull($connection->refresh_token_expires_at);
+    }
+
+    public function test_refresh_reports_when_intuit_refuses_the_refresh_token(): void
+    {
+        $client = Mockery::mock(OAuthClient::class);
+        $client->shouldReceive('refresh')->once()->andThrow(new ServiceException('Refresh OAuth 2 Access token with Refresh Token failed.', 400));
+        $this->app->instance(OAuthClient::class, $client);
+
+        $connection = $this->connection('9130');
+
+        $this->post(route('qbo-auth.connections.refresh', $connection))
+            ->assertRedirect(route('qbo-auth.index'));
+
+        $this->assertFalse(session('qbo-auth.status')['succeeded']);
+        $this->assertSame('secret-refresh', $connection->fresh()->refresh_token);
+    }
+
+    public function test_refresh_ignores_connections_from_another_environment(): void
+    {
+        $client = Mockery::mock(OAuthClient::class);
+        $client->shouldNotReceive('refresh');
+        $this->app->instance(OAuthClient::class, $client);
+
+        $connection = $this->connection('9130', 'production');
+
+        $this->post(route('qbo-auth.connections.refresh', $connection))->assertNotFound();
+    }
+
     public function test_company_info_uses_the_stored_access_token_when_it_is_still_valid(): void
     {
         $client = Mockery::mock(OAuthClient::class);

@@ -1,89 +1,75 @@
 # Laravel QuickBooks OAuth2 package
 
-This package wraps the official `quickbooks/v3-php-sdk` for the QuickBooks Online OAuth 2.0 connection flow. It provides the authorization and callback routes, encrypted token storage, and a refresh method. The application supplies its own Intuit credentials, session storage, database, and access control.
+This package wraps the official `quickbooks/v3-php-sdk` for the QuickBooks Online OAuth 2.0 connection flow. It is useful for testing and playing with how the oAuth flow will work with the SDK in a Laravel Application. It provides the authorization and callback routes, encrypted token storage, and a refresh method in a fairly simple way.
 
 ## Install in a Laravel application
 
-Requires PHP 8.3+ and Laravel 12 or 13. Add the GitHub repository and require a tagged release:
+Requires PHP 8.3+ and Laravel 12 or 13. Install it from [Packagist](https://packagist.org/packages/charlesharmon/qbo-auth):
 
 ```sh
-composer config repositories.qbo-auth vcs git@github.com:chas688/qboAuth.git
-composer require charlesharmon/qbo-auth:^0.1 --with-all-dependencies
+composer require charlesharmon/qbo-auth --with-all-dependencies
 ```
 
-`--with-all-dependencies` is needed in a new Laravel 13 application. The skeleton locks Guzzle 8, but Intuit's `quickbooks/v3-php-sdk` requires Guzzle 7, so Composer must be allowed to downgrade Guzzle. Laravel supports either version.
+`--with-all-dependencies` is needed in a new Laravel 13 application becausee Intuit's `quickbooks/v3-php-sdk` requires Guzzle 7, so Composer must be allowed to downgrade Guzzle. Laravel supports either version.
 
-If the package is published on Packagist, skip the `composer config` step. Composer discovers the service provider automatically. Run `php artisan migrate` to create `quick_books_connections`. The package loads its own migration, so you do not need to publish it.
-
-To work on the package from inside a host application, use a path repository instead so that changes apply immediately:
-
-```json
-"repositories": [{"type": "path", "url": "libraries/qboAuth", "options": {"symlink": true}}],
-"require": {"charlesharmon/qbo-auth": "dev-main"}
-```
+Composer discovers the service provider automatically. Run `php artisan migrate`. The package loads its own migration, so you do not need to publish it.
 
 Set these values in the host application's environment:
 
 ```dotenv
 QBO_ENVIRONMENT=sandbox
 QBO_LOGGING=false
-QBO_CLIENT_ID=
-QBO_CLIENT_SECRET=
-QBO_REDIRECT_URI=http://localhost:8000/oauth/quickbooks/callback
+QBO_CLIENT_ID=<QBO_CLIENT_ID>
+QBO_CLIENT_SECRET=<QBO_CLIENT_SECRET>
+QBO_REDIRECT_URI=https://<NGROK URL>/oauth/quickbooks/callback
 ```
 
 Register the exact redirect URI in the matching Intuit app. Sandbox credentials connect to sandbox companies; production credentials connect to production companies. Keep credentials and `APP_KEY` private and durable: Laravel encrypts stored tokens with `APP_KEY`.
 
 ## Connect and refresh
 
-Visit the `qbo-auth.connect` route to begin authorization. The package generates a session state, validates it on `qbo-auth.callback`, exchanges the code using Intuit's SDK, and saves both tokens for the returned `realmId`. The callback responds with the company ID and environment, without exposing tokens. The default paths are `/oauth/quickbooks/connect` and `/oauth/quickbooks/callback`.
+The examples below use `<ngrok_url>` for your public tunnel URL, such as `https://abc123.ngrok-free.app`. Without a tunnel, use the app's own URL, such as `http://localhost:8000`. All paths assume the default `oauth/quickbooks` prefix.
 
-For a popup flow, visit the `qbo-auth.index` route (`/oauth/quickbooks`). Its button opens `connect?popup=1` in a popup window. In popup mode, the callback flashes the result to the session, notifies the opening page (via `BroadcastChannel` and same-origin `postMessage`), and closes itself. The opening page then reloads to show the result and the connected companies. Without `popup=1`, the callback still returns JSON. Clicking a company ID opens a modal that loads the company's CompanyInfo from QuickBooks through `GET /oauth/quickbooks/connections/{id}/company` (`qbo-auth.connections.company`). That route first refreshes the access token if it has expired or expires within a minute. Each listed company has a remove button. After confirmation, it sends `DELETE /oauth/quickbooks/connections/{id}` (`qbo-auth.connections.destroy`). That route revokes the refresh token at Intuit and deletes the saved connection, and it still deletes the connection if Intuit refuses the revocation.
+### Before you connect
 
-When using a tunnel such as ngrok, set `QBO_REDIRECT_URI` to its HTTPS callback URL and open the connect route on that same tunnel host. If the connect route is opened on another host, the package redirects to the configured callback host before creating the session state. This keeps the browser's session cookie on the host that receives the callback.
+1. Set `QBO_REDIRECT_URI=<ngrok_url>/oauth/quickbooks/callback` in `.env` and run `php artisan config:clear`.
+2. Add the same URL, `<ngrok_url>/oauth/quickbooks/callback`, to your Intuit app under **Settings → Redirect URIs**. It must match exactly, and it must be registered for the same environment (sandbox or production) as your `QBO_CLIENT_ID`.
+
+### Connect a Company & Test
+
+1. Open `<ngrok_url>/oauth/quickbooks`. The page lists the connected companies for the current `QBO_ENVIRONMENT` and shows a **Connect to QuickBooks** button.
+2. Click the button. It opens `<ngrok_url>/oauth/quickbooks/connect?popup=1` in a popup. The package stores a random state value in the session and redirects the popup to Intuit.
+3. Sign in to Intuit and choose a company. Intuit redirects to `<ngrok_url>/oauth/quickbooks/callback?code=…&state=…&realmId=…`.
+4. The callback checks the state, exchanges the code for tokens with Intuit's SDK, and saves both tokens for the returned `realmId`. Connecting the same company again updates its saved tokens instead of adding a duplicate.
+5. Click the company's Realm ID to test that the API is called and company information is returned.
+
+You can also open `<ngrok_url>/oauth/quickbooks/connect` directly, without `popup=1`. The browser then goes through the same flow in the main window, and the callback returns JSON with the `realm_id` and `environment`. Tokens are never included in a response.
+
+Open these pages on `<ngrok_url>`, not `localhost`. If `/oauth/quickbooks` or `/oauth/quickbooks/connect` is opened on another host, the package first redirects to the host in `QBO_REDIRECT_URI`. This keeps the session cookie that holds the state on the host Intuit returns to. If that tunnel is offline (for example, ngrok restarted with a new URL), you land on ngrok's offline page instead of the connect page. Update `QBO_REDIRECT_URI` and the Intuit redirect URI to the new URL.
+
+### Refresh tokens
+
+Intuit access tokens expire after about an hour. The refresh token is used to get a new access token, and each refresh can return a new refresh token. The package saves the access token, refresh token, and both expiry times together after every refresh.
+
+- **From the connect page:** click a company ID. The modal loads the company's CompanyInfo from `GET <ngrok_url>/oauth/quickbooks/connections/{id}/company`, where `{id}` is the connection's database ID. That request refreshes the access token first if it has expired or expires within a minute. The JSON response includes `token_refreshed` and `access_token_expires_at`.
+- **From your own code:** use `CharlesHarmon\QboAuth\QuickBooksConnections`. `ensureFreshAccessToken()` refreshes only when needed; `refresh()` always refreshes. Both return the updated connection, so use the returned model for the next API call:
+
+  ```php
+  $connections = app(\CharlesHarmon\QboAuth\QuickBooksConnections::class);
+  $connection = $connections->find($realmId);
+  $connection = $connections->ensureFreshAccessToken($connection);
+  // $connection->access_token is now valid for the QuickBooks API.
+  ```
+
+The package does not schedule refreshes. If a refresh token expires or is revoked, connect the company again.
+
+### Disconnect a company
+
+On the connect page, click the remove button next to a company and confirm. This sends `DELETE <ngrok_url>/oauth/quickbooks/connections/{id}`, which revokes the refresh token at Intuit and deletes the saved connection. The connection is deleted even if Intuit refuses the revocation; the page then tells you to revoke access from the QuickBooks app settings.
+
+### Logging
 
 Set `QBO_LOGGING=true` to write OAuth flow events to Laravel's configured log, usually `storage/logs/laravel.log`. These events include host and session-presence diagnostics, but never authorization codes, client secrets, state values, or tokens. The SDK's raw request logger is intentionally left off because it logs sensitive OAuth request data.
 
-## Configure and customize
 
-The routes use Laravel's `web` middleware by default. For an application with users, publish the config and add your authorization middleware to `route_middleware` before exposing the connect route:
 
-```sh
-php artisan vendor:publish --tag=qbo-auth-config
-```
-
-The published config also controls the routes:
-
-- `route_prefix` (default `oauth/quickbooks`): the URL prefix for every package route. If you change it, update `QBO_REDIRECT_URI` and the redirect URI registered with Intuit to match.
-- `register_routes` (default `true`): set it to `false` to define your own routes that point to `CharlesHarmon\QboAuth\Http\Controllers\QuickBooksOAuthController`. Keep the `qbo-auth.*` route names, because the controller and views use them.
-
-To change the connect page or popup callback page, publish the views to `resources/views/vendor/qbo-auth`. Laravel uses the published copies instead of the package's views:
-
-```sh
-php artisan vendor:publish --tag=qbo-auth-views
-```
-
-To change the table, publish the migration and edit the copy before running it. The copy keeps the package's file name, so Laravel treats it as the same migration and does not run it twice:
-
-```sh
-php artisan vendor:publish --tag=qbo-auth-migrations
-```
-
-Use `CharlesHarmon\QboAuth\QuickBooksConnections` to look up and refresh a connection:
-
-```php
-$connections = app(\CharlesHarmon\QboAuth\QuickBooksConnections::class);
-$connection = $connections->find($realmId);
-$connection = $connections->refresh($connection);
-```
-
-`refresh()` persists the newly returned access and refresh tokens together. Call it before the access token expires and retain the refreshed token for future requests. The package currently handles authorization and token persistence only; it does not make accounting API requests or run a refresh schedule.
-
-## Development
-
-The package has its own test suite, which uses Orchestra Testbench:
-
-```sh
-composer install
-composer test
-```

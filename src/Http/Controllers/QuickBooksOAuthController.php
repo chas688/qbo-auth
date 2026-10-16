@@ -131,6 +131,33 @@ class QuickBooksOAuthController
         ]);
     }
 
+    /**
+     * Refresh the connection's tokens on demand, so the connect page shows the new expiry dates.
+     */
+    public function refresh(Request $request, QuickBooksConnection $connection, QuickBooksConnections $connections): RedirectResponse
+    {
+        abort_unless($connection->environment === config('qbo-auth.environment', 'sandbox'), 404);
+
+        try {
+            $connections->refresh($connection);
+            $refreshed = true;
+        } catch (SdkException|ServiceException $exception) {
+            report($exception);
+            $refreshed = false;
+        }
+
+        $this->log('connection_refreshed', [
+            'request_host' => $request->getHost(),
+            'refreshed' => $refreshed,
+        ]);
+
+        $request->session()->flash('qbo-auth.status', $refreshed
+            ? ['succeeded' => true, 'message' => "QuickBooks company {$connection->realm_id} tokens refreshed."]
+            : ['succeeded' => false, 'message' => "QuickBooks could not refresh company {$connection->realm_id}. Its refresh token may have expired or been revoked; connect it again."]);
+
+        return redirect()->away(route('qbo-auth.index', [], false));
+    }
+
     public function destroy(Request $request, QuickBooksConnection $connection, QuickBooksConnections $connections): RedirectResponse
     {
         abort_unless($connection->environment === config('qbo-auth.environment', 'sandbox'), 404);
